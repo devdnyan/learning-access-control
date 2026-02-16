@@ -1,30 +1,64 @@
-const users = {
-    user: require('../userCredentials/userdetails.json'),
-    setUser: function(data) { this.user = data }
-}
+const pool = require('../database/db');
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
+require('dotenv').config();
 
 const handleRefreshToken = async (req, res) => {
-    const cookies  = req.cookies;
-    if(!cookies?.jwt) return res.status(401).json({ 'message': 'Unauthorized' });
-    console.log(cookies.jwt);
+    const cookies = req.cookies;
+    if (!cookies?.jwt)
+        return res.status(401).json({ message: "Unauthorized" });
+
     const refreshToken = cookies.jwt;
 
-    const foundUser = users.user.find(person => person.refreshToken === refreshToken);
-    if(!foundUser) return res.sendStatus(403); //Forbidden
-    
-    jwt.verify(
-        refreshToken,
-        process.env.REFRESH_TOKEN_SECRET,
-        (err, decoded) => {
-            if(err || foundUser.username !== decoded.username) return res.sendStatus(403);
-            const accessToken = jwt.sign(
-                { "username": decoded.username },
-                process.env.ACCESS_TOKEN_SECRET,
-                { expiresIn: '30s' }
+    try {
+        const decoded = jwt.verify(
+            refreshToken,
+            process.env.REFRESH_TOKEN
+        );
+
+        const userId = decoded.user_id;
+
+        const result = await pool.query(
+            `
+            SELECT * FROM refresh_tokens
+            WHERE user_id = $1
+            AND revoked = false
+            AND expires_at > NOW()
+            `,
+            [userId]
+        );
+
+        if (result.rows.length === 0)
+            return res.sendStatus(403);
+
+        let validToken = null;
+
+        for (const tokenRow of result.rows) {
+            const isMatch = await bcrypt.compare(
+                refreshToken,
+                tokenRow.token_hash
             );
-            res.json({ accessToken });
+
+            if (isMatch) {
+                validToken = tokenRow;
+                break;
+            }
         }
-    )
-}
+
+        if (!validToken)
+            return res.sendStatus(403);
+
+        const accessToken = jwt.sign(
+            { user_id: decoded.user_id, email: decoded.email },
+            process.env.ACCESS_TOKEN,
+            { expiresIn: '60s' }
+        );
+
+        return res.json({ accessToken });
+
+    } catch (err) {
+        return res.sendStatus(403);
+    }
+};
 
 module.exports = { handleRefreshToken };

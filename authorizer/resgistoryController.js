@@ -1,39 +1,27 @@
-const fsPromise = require('fs').promises;
-const path = require('path');
-
-const users = {
-    user: require('../userCredentials/userdetails.json'),
-    setUser: function(data) { this.user = data }
-}
-
+const pool  = require('../database/db');
 const bcrypt = require('bcrypt');
 
 const registerNewUser = async (req, res) => {
-    const { user , password } = req.body;
-    if(!user || !password) 
-        return res.status(400).json({ 'message': 'Username and password are required.' });
-
-    const duplicate = users.user.find(person => person.username === user);
-    if(duplicate)
-        return res.status(409).json({ 'message': 'username already exists.' });
+    const { email , password } = req.body;
+    if(!email || !password) 
+        return res.status(400).json({ 'message': 'Email and password are required.' });
 
     try{
         const hashedPassword = await bcrypt.hash(password, 10);
-        const newUser = {username: user, password: hashedPassword};
-
-        users.setUser([...users.user, newUser]);
-        console.log(users.user);
-        const isSuccess = await fsPromise
-        .writeFile(
-            path.join(__dirname, '../userCredentials/userdetails.json'), 
-            JSON.stringify(users.user)
-        );
-
+        const query = `
+            INSERT INTO users (email, password_hash)
+            VALUES ($1, $2)
+            RETURNING id, email;
+        `;
+        const result = await pool.query(query, [email, hashedPassword]);
+        res.status(201).json({ 'message': 'User registered successfully', 'user': result.rows[0] });
+        // console.log(result.rows[0]);
     }catch(err){
+        if(err.code === '23505') {
+            return res.status(409).json({ 'message': 'Email already exists.' });
+        }
         return res.status(500).json({ 'message': err.message });
     }
-    res.status(201).json({ 'success': `New user ${user} created!` });
-
 }
 
 module.exports = { registerNewUser };

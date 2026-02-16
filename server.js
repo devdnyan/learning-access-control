@@ -4,7 +4,7 @@ const app = express();
 const auth = require('./authorizer/authorizationController');
 const verifyJWT = require('./middleware/verifyJWT');
 const cookieParser = require('cookie-parser');
-const { registerNewUserDB } = require('./database/registerNewUser');
+// const { registerNewUserDB } = require('./database/registerNewUser');
 const port = 3000;
 
 
@@ -21,7 +21,7 @@ app.get('/', verifyJWT, (req, res) => {
   res.json({ message: 'Hello World!' });
 });
 
-app.post('/dbsignup', registerNewUserDB);
+// app.post('/dbsignup', registerNewUserDB);
 
 app.listen(port, () => {
   console.log(`Server is running on http://localhost:${port}`);
